@@ -1,0 +1,139 @@
+div
+  .form-group.has-tips.manual(ld="base error-root",plug="widget",style="cursor:default")
+    div(ld="display", data-display="block"): label.text-capitalize.d-flex.align-items-end
+      div
+        span(ld="label")
+        span.variant.text-sm.ml-2 (#[span(ld="variant")])
+        span.text-danger.ml-2(ld="is-required") *
+      .flex-grow-1
+      .m-edit: .text-danger.text-sm(ld="limitation")
+    .text-sm.text-muted(ld="display", data-display="block"): div(ld="desc", style="margin:-.6em 0 .7em")
+    .m-edit
+      input.form-control(ld="input",autocomplete="off",autocapitalize="off")
+      .unit.text-muted(ld="has-unit") #[span(t) 單位]: #[span(ld="unit")  ...]
+      .hover-tip.tip-sm: div(ld-each="error")
+    .m-edit(ld="display",data-display="block"): .text-danger.text-sm.mt-2.note(ld-each="note")
+    .m-view(ld="content")
+  style(type="text/css"): :stylus
+    .variant { display: none }
+    .has-variant .variant { display: inline }
+    .unit
+      pointer-events: none
+      text-align: right
+      margin: -1.75em .5em 0 0
+      line-height: 1em
+      font-size: .75em
+
+  script(type="@plotdb/block"): :lsc
+    module.exports =
+      pkg:
+        name: "@makeform/input", extend: {name: "@makeform/base"}
+        dependencies: [
+          {name: "marked", version: "main", path: "marked.min.js"}
+        ]
+        i18n:
+          "en": "單位": "unit"
+          "zh-TW": "unit": "單位"
+      init: (opt) -> opt.pubsub.fire \init, mod: mod(opt)
+    mod = ({root, ctx, data, parent, t}) -> 
+      {ldview,marked} = ctx
+      lc = {}
+      remeta = (v) ->
+        lc.meta = v
+        lc.cfg = v.config
+        lc.display = v.config.display or \block
+      remeta data
+      init: ->
+        @on \meta, ~> remeta @serialize!
+        @on \change, (v) ~>
+          c = @content v
+          if !(c?) => c = ''
+          if @view.get(\input).value == c => return
+          @view.get(\input).value = c
+          @view.render <[preview input content]>
+        handler = ({node}) ~>
+          if @content(v = @value!) == (nv = node.value) => return
+          if v and typeof(v) == \object => v.v = nv
+          else v = {v: nv}
+          @value v
+        @view = view = new ldview do
+          root: root
+          action:
+            input: input: handler
+            change:
+              input: handler
+              "enable-markdown-input": ({node}) ~>
+                lc.markdown = node.checked
+                if !lc.markdown => lc.preview = false
+                if typeof(v = @value!) != \object => v = {v: v}
+                v.markdown = lc.markdown
+                @value v
+                view.render!
+            click:
+              mode: ({node}) ->
+                lc.preview = if node.getAttribute(\data-name) == \preview => true else false
+                view.render!
+          text:
+            label: ~> t(lc.meta.title or 'untitled')
+            variant: ({node}) ~> t(lc.cfg.variant or '')
+            unit: ({node}) ~> t(lc.cfg.unit or '')
+          handler:
+            "is-required": ({node}) ~>
+              node.classList.toggle \d-none, !lc.meta.is-required
+            desc: ({node}) ~>
+              node.classList.toggle \d-none, !lc.meta.desc
+              node.innerText = t(lc.meta.desc or '') or ''
+            "display": ({node}) ~>
+              node.classList.toggle \d-none, node.getAttribute(\data-display) != lc.display
+            "has-unit": ({node}) ~>
+              node.classList.toggle \d-none, !lc.cfg.unit
+            "enable-markdown": ({node}) ~> node.classList.toggle \d-none, !lc.cfg.show-markdown-option
+            mode: ({node}) ->
+              node.classList.toggle \d-none, !lc.markdown
+              node.classList.toggle \active, !(lc.preview xor (node.getAttribute(\data-name) == \preview))
+            base: ({node}) ~>
+              node.classList.toggle \form-group, (lc.display == \block)
+              node.classList.toggle \has-variant, !!lc.cfg.variant
+            preview: ({node}) ~>
+              if !view => return
+              node.classList.toggle \d-none, !lc.preview
+              node.innerHTML = marked.parse view.get(\input).value
+            limitation: ({node}) ~>
+              node.classList.toggle \d-none, !lc.cfg.limitation
+              node.innerHTML = "• " + t(lc.cfg.limitation or '')
+            input: ({node}) ~>
+              readonly = !!lc.meta.readonly
+              if readonly => node.setAttribute \readonly, true
+              else node.removeAttribute \readonly
+              node.classList.toggle \is-invalid, @status! == 2
+              if lc.cfg.placeholder => node.setAttribute \placeholder, lc.cfg.placeholder
+              else node.removeAttribute \placeholder
+            content: ({node}) ~>
+              val = @content!
+              text = if @is-empty! => "n/a"
+              else val + (if lc.cfg.unit => that else "")
+              node.classList.toggle \text-muted, @is-empty!
+              node.innerText = text
+              #ret = marked.parse view.get(\input).value
+
+            "error-root": ({node}) ~> node.classList.toggle \manual, @status! != 2
+            error:
+              list: ~>
+                if (s = @status!) != 2 => return []
+                @_errors.slice(0, 1) ++ (if @_errors.length > 1 => ["..."] else [])
+              text: ({data}) -> t data
+            note:
+              list: ~>
+                if Array.isArray(lc.cfg.note) => lc.cfg.note
+                else if lc.cfg.note => [lc.cfg.note]
+                else []
+              key: -> it
+              handler: ({node, data}) -> node.innerText = "• #{t data}"
+
+      render: ->
+        @view.render!
+
+      is-empty: (v) ->
+        v = @content(v)
+        return (typeof(v) == \undefined) or (typeof(v) == \string and v.trim! == "") or v == null
+      content: (v) -> if v and typeof(v) == \object => v.v else v
