@@ -1,1 +1,5 @@
-# currency
+# @makeform/currency
+
+## License
+
+MIT
